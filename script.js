@@ -58,6 +58,7 @@ const GAME = {
     slowTimeActive: false,
     combo: 0,
     notified90: false,
+    notified50: false,
     slowItems: 0,
     giftItems: 0
 };
@@ -96,61 +97,81 @@ function initCanvas() {
     resizeCanvas();
 }
 
-// 3D Glass Rendering for Block
-function drawBlock(ctx, x, y, type, alpha = 1, isGhost = false) {
+function drawBlock(ctx, x, y, type, alpha = 1, isGhost = false, customSize = 0) {
     if (!type) return;
     
     const colors = COLORS[type];
-    const size = BLOCK_SIZE;
+    const size = customSize || BLOCK_SIZE;
     const px = x * size;
     const py = y * size;
-    const padding = 1;
+    const padding = customSize ? 0 : 1;
 
     ctx.save();
     ctx.globalAlpha = alpha;
     
     if (isGhost) {
-        // Ghost Piece - outline only with slight fill
         ctx.fillStyle = `rgba(255,255,255,0.15)`;
         ctx.strokeStyle = colors[0];
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.roundRect(px + padding, py + padding, size - padding * 2, size - padding * 2, 4);
+        ctx.rect(px + padding, py + padding, size - padding * 2, size - padding * 2);
         ctx.fill();
         ctx.stroke();
     } else {
-        // Solid Glass Block - Liquid aesthetics
-        // Base shiny gradient
-        const grad = ctx.createLinearGradient(px, py, px, py + size);
-        grad.addColorStop(0, colors[1]); /* lighter */
-        grad.addColorStop(1, colors[0]); /* darker */
-        
-        ctx.fillStyle = grad;
+        const w = size - padding * 2;
+        const h = size - padding * 2;
+        const bx = px + padding;
+        const by = py + padding;
+
+        const bevel = Math.max(2, size * 0.15);
+
+        // Base background (Lighter)
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(bx, by, w, h);
+
+        // Top Bevel Highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
         ctx.beginPath();
-        ctx.roundRect(px + padding, py + padding, size - padding * 2, size - padding * 2, 3);
-        ctx.fill();
-        
-        // Inner Glass Highlight sweeping across top
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-        ctx.beginPath();
-        ctx.roundRect(px + padding + 1.5, py + padding + 1.5, size - padding * 2 - 3, (size - padding * 2) * 0.45, 2);
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + w, by);
+        ctx.lineTo(bx + w - bevel, by + bevel);
+        ctx.lineTo(bx + bevel, by + bevel);
         ctx.fill();
 
-        // Bottom light reflection simulating deep glass depth
-        const glow = ctx.createLinearGradient(px, py + size*0.5, px, py + size);
-        glow.addColorStop(0, 'rgba(255,255,255,0)');
-        glow.addColorStop(1, 'rgba(255,255,255,0.4)');
-        ctx.fillStyle = glow;
+        // Left Bevel Highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.beginPath();
-        ctx.roundRect(px + padding, py + padding, size - padding * 2, size - padding * 2, 3);
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx, by + h);
+        ctx.lineTo(bx + bevel, by + h - bevel);
+        ctx.lineTo(bx + bevel, by + bevel);
         ctx.fill();
 
-        // Bright border to emulate 3D polished edge
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 1;
+        // Bottom Bevel Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.beginPath();
-        ctx.roundRect(px + padding + 0.5, py + padding + 0.5, size - padding * 2 - 1, size - padding * 2 - 1, 3);
-        ctx.stroke();
+        ctx.moveTo(bx, by + h);
+        ctx.lineTo(bx + w, by + h);
+        ctx.lineTo(bx + w - bevel, by + h - bevel);
+        ctx.lineTo(bx + bevel, by + h - bevel);
+        ctx.fill();
+
+        // Right Bevel Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.beginPath();
+        ctx.moveTo(bx + w, by);
+        ctx.lineTo(bx + w, by + h);
+        ctx.lineTo(bx + w - bevel, by + h - bevel);
+        ctx.lineTo(bx + w - bevel, by + bevel);
+        ctx.fill();
+
+        // Center Solid (Darker)
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(bx + bevel, by + bevel, w - bevel * 2, h - bevel * 2);
+
+        // Center Glass Glare (Upper Half)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillRect(bx + bevel, by + bevel, w - bevel * 2, (h - bevel * 2) / 2);
     }
     
     ctx.restore();
@@ -209,7 +230,7 @@ function drawPiece() {
 }
 
 function drawNextPiece() {
-    GAME.nextCtx.clearRect(0, 0, 60, 60);
+    GAME.nextCtx.clearRect(0, 0, 70, 70);
     if (!GAME.nextPiece) return;
     
     const previewSize = 16;
@@ -217,26 +238,11 @@ function drawNextPiece() {
     const offsetY = (70 - GAME.nextPiece.matrix.length * previewSize) / 2;
 
     GAME.nextCtx.save();
+    GAME.nextCtx.translate(offsetX, offsetY);
     GAME.nextPiece.matrix.forEach((row, y) => {
         row.forEach((value, x) => {
             if (value > 0) {
-                const colors = COLORS[value];
-                const px = offsetX + x * previewSize;
-                const py = offsetY + y * previewSize;
-                
-                const grad = GAME.nextCtx.createLinearGradient(px, py, px, py + previewSize);
-                grad.addColorStop(0, colors[1]);
-                grad.addColorStop(1, colors[0]);
-                
-                GAME.nextCtx.fillStyle = grad;
-                GAME.nextCtx.beginPath();
-                GAME.nextCtx.roundRect(px, py, previewSize-1, previewSize-1, 2);
-                GAME.nextCtx.fill();
-
-                GAME.nextCtx.fillStyle = 'rgba(255,255,255,0.6)';
-                GAME.nextCtx.beginPath();
-                GAME.nextCtx.roundRect(px+1, py+1, previewSize-3, previewSize*0.4, 1);
-                GAME.nextCtx.fill();
+                drawBlock(GAME.nextCtx, x, y, value, 1, false, previewSize);
             }
         });
     });
@@ -297,6 +303,7 @@ function resetGame() {
     GAME.dropInterval = 1000;
     GAME.combo = 0;
     GAME.notified90 = false;
+    GAME.notified50 = false;
     GAME.slowItems = 0;
     GAME.giftItems = 0;
     document.getElementById('inv-slow-count').innerText = "0";
@@ -450,6 +457,16 @@ function checkMarketingHooks() {
             { id: 'btn-continue', show: true, text: 'Chơi tiếp đeeee' }
         ]);
         vibrate([100, 50, 100, 50, 100]);
+    } else if (GAME.score >= 50 && !GAME.notified50) {
+        GAME.notified50 = true;
+        GAME.slowItems++;
+        document.getElementById('inv-slow-count').innerText = GAME.slowItems;
+        
+        GAME.state = 'PAUSED'; 
+        showPopup('Tiếp sức!', '⏳', 'Chúc mừng mốc 50 điểm! Bạn được tặng 1 lượt làm chậm thời gian chơi.', [
+            { id: 'btn-continue', show: true, text: 'Nhận & Chơi tiếp' }
+        ]);
+        vibrate([50, 100, 50]);
     } else if (GAME.score >= 90 && GAME.score < 100 && !GAME.notified90) {
         GAME.notified90 = true;
         UI.pizzaText.innerText = `Chỉ còn ${100 - GAME.score} điểm nữa nhận Pizza! Cố lên!`;
